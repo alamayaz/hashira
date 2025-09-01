@@ -3,10 +3,50 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <sstream>
-#include <cmath>
-#include <iomanip>
 #include <algorithm>
+
+// Use a large prime for modular arithmetic (similar to Java approach)
+const long long MOD = 1000000007LL; // Large prime number
+
+// Modular arithmetic functions
+long long modAdd(long long a, long long b, long long mod = MOD) {
+    return ((a % mod) + (b % mod)) % mod;
+}
+
+long long modMul(long long a, long long b, long long mod = MOD) {
+    return ((a % mod) * (b % mod)) % mod;
+}
+
+long long modPow(long long base, long long exp, long long mod = MOD) {
+    long long result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = modMul(result, base, mod);
+        base = modMul(base, base, mod);
+        exp >>= 1;
+    }
+    return result;
+}
+
+// Extended Euclidean Algorithm for modular inverse
+long long extgcd(long long a, long long b, long long &x, long long &y) {
+    if (b == 0) {
+        x = 1; y = 0;
+        return a;
+    }
+    long long x1, y1;
+    long long gcd = extgcd(b, a % b, x1, y1);
+    x = y1;
+    y = x1 - (a / b) * y1;
+    return gcd;
+}
+
+long long modInverse(long long a, long long mod = MOD) {
+    long long x, y;
+    long long gcd = extgcd(a, mod, x, y);
+    if (gcd != 1) return -1; // No inverse exists
+    return (x % mod + mod) % mod;
+}
 
 struct Point {
     long long x, y;
@@ -18,7 +58,7 @@ struct RootData {
     std::string value;
 };
 
-// Convert number from given base to decimal
+// Convert from base to decimal (with overflow protection)
 long long baseToDecimal(const std::string& value, int base) {
     long long result = 0;
     long long power = 1;
@@ -39,14 +79,61 @@ long long baseToDecimal(const std::string& value, int base) {
             throw std::invalid_argument("Digit exceeds base");
         }
         
-        result += digit * power;
-        power *= base;
+        // Use modular arithmetic to prevent overflow
+        result = modAdd(result, modMul(digit, power));
+        power = modMul(power, base);
     }
     
     return result;
 }
 
-// Simple JSON parser for the specific format
+// Lagrange interpolation using modular arithmetic (like Java code)
+long long lagrangeInterpolationModular(const std::vector<Point>& points, int k) {
+    long long result = 0;
+    
+    std::cout << "\n=== Modular Lagrange Interpolation ===" << std::endl;
+    std::cout << "Using prime modulus: " << MOD << std::endl;
+    
+    for (int i = 0; i < k; i++) {
+        long long numerator = 1;
+        long long denominator = 1;
+        
+        std::cout << "\nTerm " << (i+1) << ": y" << (i+1) << " = " << points[i].y << std::endl;
+        
+        for (int j = 0; j < k; j++) {
+            if (i != j) {
+                // numerator *= (0 - points[j].x)
+                numerator = modMul(numerator, (MOD - points[j].x) % MOD);
+                
+                // denominator *= (points[i].x - points[j].x)
+                long long diff = (points[i].x - points[j].x + MOD) % MOD;
+                denominator = modMul(denominator, diff);
+                
+                std::cout << "  * (0 - " << points[j].x << ") / (" 
+                          << points[i].x << " - " << points[j].x << ")" << std::endl;
+            }
+        }
+        
+        // Calculate: points[i].y * numerator * modInverse(denominator)
+        long long inv_denominator = modInverse(denominator);
+        if (inv_denominator == -1) {
+            throw std::runtime_error("Cannot find modular inverse");
+        }
+        
+        long long term = modMul(points[i].y, modMul(numerator, inv_denominator));
+        result = modAdd(result, term);
+        
+        std::cout << "  Numerator: " << numerator << std::endl;
+        std::cout << "  Denominator: " << denominator << std::endl;
+        std::cout << "  Inverse: " << inv_denominator << std::endl;
+        std::cout << "  Term: " << term << std::endl;
+        std::cout << "  Running total: " << result << std::endl;
+    }
+    
+    return result;
+}
+
+// JSON Parser (same as before)
 class JSONParser {
 private:
     static std::string trim(const std::string& str) {
@@ -58,8 +145,9 @@ private:
     
     static std::string removeQuotes(const std::string& str) {
         std::string result = str;
-        if (result.front() == '"') result.erase(0, 1);
-        if (result.back() == '"') result.pop_back();
+        if (!result.empty() && result.front() == '"') result.erase(0, 1);
+        if (!result.empty() && result.back() == '"') result.pop_back();
+        if (!result.empty() && result.back() == ',') result.pop_back();
         return result;
     }
 
@@ -73,7 +161,7 @@ public:
         std::string content;
         std::string line;
         while (std::getline(file, line)) {
-            content += line + "\n";
+            content += line + " ";
         }
         file.close();
         
@@ -83,7 +171,7 @@ public:
             size_t keysEnd = content.find("}", keysStart);
             std::string keysSection = content.substr(keysStart, keysEnd - keysStart);
             
-            // Extract n
+            // Extract n and k
             size_t nPos = keysSection.find("\"n\"");
             if (nPos != std::string::npos) {
                 size_t colonPos = keysSection.find(":", nPos);
@@ -93,7 +181,6 @@ public:
                 n = std::stoi(trim(nValue));
             }
             
-            // Extract k
             size_t kPos = keysSection.find("\"k\"");
             if (kPos != std::string::npos) {
                 size_t colonPos = keysSection.find(":", kPos);
@@ -106,150 +193,128 @@ public:
         // Parse root sections
         size_t pos = 0;
         while ((pos = content.find("\"", pos)) != std::string::npos) {
-            pos++; // Move past the quote
+            pos++;
             size_t endQuote = content.find("\"", pos);
             if (endQuote == std::string::npos) break;
             
             std::string key = content.substr(pos, endQuote - pos);
             pos = endQuote + 1;
             
-            // Skip keys section
             if (key == "keys" || key == "n" || key == "k" || key == "base" || key == "value") {
                 continue;
             }
             
-            // Try to parse as integer (root number)
             try {
                 int rootNum = std::stoi(key);
                 
-                // Find the corresponding object
-                size_t objStart = content.find("{", pos);
-                if (objStart == std::string::npos) continue;
+                size_t braceStart = content.find("{", pos);
+                if (braceStart == std::string::npos) continue;
                 
-                size_t objEnd = content.find("}", objStart);
-                if (objEnd == std::string::npos) continue;
+                size_t braceEnd = content.find("}", braceStart);
+                if (braceEnd == std::string::npos) continue;
                 
-                std::string objContent = content.substr(objStart + 1, objEnd - objStart - 1);
+                std::string rootContent = content.substr(braceStart + 1, braceEnd - braceStart - 1);
                 
                 RootData rootData;
                 
                 // Extract base
-                size_t basePos = objContent.find("\"base\"");
+                size_t basePos = rootContent.find("\"base\"");
                 if (basePos != std::string::npos) {
-                    size_t colonPos = objContent.find(":", basePos);
-                    size_t commaPos = objContent.find(",", colonPos);
-                    if (commaPos == std::string::npos) commaPos = objContent.length();
-                    std::string baseValue = objContent.substr(colonPos + 1, commaPos - colonPos - 1);
+                    size_t colonPos = rootContent.find(":", basePos);
+                    size_t commaPos = rootContent.find(",", colonPos);
+                    if (commaPos == std::string::npos) commaPos = rootContent.length();
+                    std::string baseValue = rootContent.substr(colonPos + 1, commaPos - colonPos - 1);
                     rootData.base = std::stoi(removeQuotes(trim(baseValue)));
                 }
                 
                 // Extract value
-                size_t valuePos = objContent.find("\"value\"");
+                size_t valuePos = rootContent.find("\"value\"");
                 if (valuePos != std::string::npos) {
-                    size_t colonPos = objContent.find(":", valuePos);
-                    size_t endPos = objContent.length();
-                    std::string valueStr = objContent.substr(colonPos + 1, endPos - colonPos - 1);
+                    size_t colonPos = rootContent.find(":", valuePos);
+                    size_t endPos = rootContent.length();
+                    std::string valueStr = rootContent.substr(colonPos + 1, endPos - colonPos - 1);
                     rootData.value = removeQuotes(trim(valueStr));
                 }
                 
-                roots[rootNum] = rootData;
-                pos = objEnd;
+                if (rootData.base > 0 && !rootData.value.empty()) {
+                    roots[rootNum] = rootData;
+                }
+                
+                pos = braceEnd;
                 
             } catch (...) {
-                // Not a number, skip
+                continue;
             }
         }
     }
 };
 
-// Lagrange interpolation to find the constant term
-double lagrangeInterpolation(const std::vector<Point>& points, int k) {
-    double result = 0.0;
-    
-    // We only need the constant term, so we evaluate at x = 0
-    for (int i = 0; i < k; i++) {
-        double term = points[i].y;
-        
-        for (int j = 0; j < k; j++) {
-            if (i != j) {
-                term *= (0.0 - points[j].x) / (double)(points[i].x - points[j].x);
-            }
-        }
-        
-        result += term;
-    }
-    
-    return result;
-}
-
 int main() {
     try {
-        int n, k;
+        int n = 0, k = 0;
         std::map<int, RootData> roots;
         
-        // Parse JSON file
+        std::cout << "=== Shamir's Secret Sharing with Modular Arithmetic ===" << std::endl;
+        
         JSONParser::parseFile("input.json", n, k, roots);
         
-        std::cout << "=== Shamir's Secret Sharing Solver ===" << std::endl;
         std::cout << "n (number of roots provided): " << n << std::endl;
         std::cout << "k (minimum roots needed): " << k << std::endl;
+        std::cout << "Using modular arithmetic with prime: " << MOD << std::endl;
         std::cout << std::endl;
         
-        // Convert roots to points
+        if (roots.empty()) {
+            std::cout << "ERROR: No roots were parsed from the JSON file!" << std::endl;
+            return 1;
+        }
+        
+        // Convert roots to points using modular arithmetic
         std::vector<Point> points;
         
-        std::cout << "Converting roots to decimal points:" << std::endl;
+        std::cout << "Converting roots to decimal points (mod " << MOD << "):" << std::endl;
         for (const auto& root : roots) {
             int x = root.first;
             int base = root.second.base;
             std::string value = root.second.value;
             
-            long long y = baseToDecimal(value, base);
-            points.push_back(Point(x, y));
-            
-            std::cout << "Root " << x << ": base " << base 
-                      << ", value \"" << value << "\" -> (" << x << ", " << y << ")" << std::endl;
+            try {
+                long long y = baseToDecimal(value, base);
+                points.push_back(Point(x, y));
+                
+                std::cout << "Root " << x << ": base " << base 
+                          << ", value \"" << value << "\"" << std::endl;
+                std::cout << "  -> (" << x << ", " << y << ")" << std::endl;
+            } catch (const std::exception& e) {
+                std::cout << "Error converting Root " << x << ": " << e.what() << std::endl;
+            }
         }
         std::cout << std::endl;
         
-        if (points.size() < k) {
-            throw std::runtime_error("Not enough points to solve the polynomial");
+        if ((int)points.size() < k) {
+            std::cout << "ERROR: Not enough valid points!" << std::endl;
+            return 1;
         }
         
-        // Use first k points for interpolation
+        // Sort points and use first k
+        std::sort(points.begin(), points.end(), [](const Point& a, const Point& b) {
+            return a.x < b.x;
+        });
+        
         std::vector<Point> selectedPoints(points.begin(), points.begin() + k);
         
-        std::cout << "Using first " << k << " points for Lagrange interpolation:" << std::endl;
+        std::cout << "Using first " << k << " points:" << std::endl;
         for (int i = 0; i < k; i++) {
             std::cout << "(" << selectedPoints[i].x << ", " << selectedPoints[i].y << ")";
             if (i < k - 1) std::cout << ", ";
         }
-        std::cout << std::endl << std::endl;
+        std::cout << std::endl;
         
-        // Find the constant term using Lagrange interpolation
-        double constant = lagrangeInterpolation(selectedPoints, k);
+        // Use modular Lagrange interpolation
+        long long secret = lagrangeInterpolationModular(selectedPoints, k);
         
-        std::cout << "=== RESULT ===" << std::endl;
-        std::cout << "The constant term (secret) is: " << std::fixed << std::setprecision(0) << constant << std::endl;
-        
-        // Verify with manual calculation for the sample
-        if (k == 3 && selectedPoints.size() >= 3) {
-            std::cout << std::endl << "=== Manual Verification ===" << std::endl;
-            std::cout << "For points (" << selectedPoints[0].x << "," << selectedPoints[0].y << "), "
-                      << "(" << selectedPoints[1].x << "," << selectedPoints[1].y << "), "
-                      << "(" << selectedPoints[2].x << "," << selectedPoints[2].y << ")" << std::endl;
-            
-            // Manual calculation
-            long long x1 = selectedPoints[0].x, y1 = selectedPoints[0].y;
-            long long x2 = selectedPoints[1].x, y2 = selectedPoints[1].y;
-            long long x3 = selectedPoints[2].x, y3 = selectedPoints[2].y;
-            
-            double manual = y1 * (0.0 - x2) * (0.0 - x3) / ((x1 - x2) * (x1 - x3)) +
-                           y2 * (0.0 - x1) * (0.0 - x3) / ((x2 - x1) * (x2 - x3)) +
-                           y3 * (0.0 - x1) * (0.0 - x2) / ((x3 - x1) * (x3 - x2));
-            
-            std::cout << "Manual calculation result: " << std::fixed << std::setprecision(0) << manual << std::endl;
-        }
+        std::cout << "\n=== RESULT ===" << std::endl;
+        std::cout << "The constant term (secret) is: " << secret << std::endl;
+        std::cout << "Note: Result is computed modulo " << MOD << std::endl;
         
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
