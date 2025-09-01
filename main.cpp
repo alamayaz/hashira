@@ -91,14 +91,9 @@ long long baseToDecimal(const std::string& value, int base) {
 long long lagrangeInterpolationModular(const std::vector<Point>& points, int k) {
     long long result = 0;
     
-    std::cout << "\n=== Modular Lagrange Interpolation ===" << std::endl;
-    std::cout << "Using prime modulus: " << MOD << std::endl;
-    
     for (int i = 0; i < k; i++) {
         long long numerator = 1;
         long long denominator = 1;
-        
-        std::cout << "\nTerm " << (i+1) << ": y" << (i+1) << " = " << points[i].y << std::endl;
         
         for (int j = 0; j < k; j++) {
             if (i != j) {
@@ -108,9 +103,6 @@ long long lagrangeInterpolationModular(const std::vector<Point>& points, int k) 
                 // denominator *= (points[i].x - points[j].x)
                 long long diff = (points[i].x - points[j].x + MOD) % MOD;
                 denominator = modMul(denominator, diff);
-                
-                std::cout << "  * (0 - " << points[j].x << ") / (" 
-                          << points[i].x << " - " << points[j].x << ")" << std::endl;
             }
         }
         
@@ -122,12 +114,6 @@ long long lagrangeInterpolationModular(const std::vector<Point>& points, int k) 
         
         long long term = modMul(points[i].y, modMul(numerator, inv_denominator));
         result = modAdd(result, term);
-        
-        std::cout << "  Numerator: " << numerator << std::endl;
-        std::cout << "  Denominator: " << denominator << std::endl;
-        std::cout << "  Inverse: " << inv_denominator << std::endl;
-        std::cout << "  Term: " << term << std::endl;
-        std::cout << "  Running total: " << result << std::endl;
     }
     
     return result;
@@ -254,24 +240,15 @@ int main() {
         int n = 0, k = 0;
         std::map<int, RootData> roots;
         
-        std::cout << "=== Shamir's Secret Sharing with Modular Arithmetic ===" << std::endl;
-        
         JSONParser::parseFile("input.json", n, k, roots);
         
-        std::cout << "n (number of roots provided): " << n << std::endl;
-        std::cout << "k (minimum roots needed): " << k << std::endl;
-        std::cout << "Using modular arithmetic with prime: " << MOD << std::endl;
-        std::cout << std::endl;
-        
         if (roots.empty()) {
-            std::cout << "ERROR: No roots were parsed from the JSON file!" << std::endl;
             return 1;
         }
         
         // Convert roots to points using modular arithmetic
         std::vector<Point> points;
         
-        std::cout << "Converting roots to decimal points (mod " << MOD << "):" << std::endl;
         for (const auto& root : roots) {
             int x = root.first;
             int base = root.second.base;
@@ -280,18 +257,12 @@ int main() {
             try {
                 long long y = baseToDecimal(value, base);
                 points.push_back(Point(x, y));
-                
-                std::cout << "Root " << x << ": base " << base 
-                          << ", value \"" << value << "\"" << std::endl;
-                std::cout << "  -> (" << x << ", " << y << ")" << std::endl;
             } catch (const std::exception& e) {
-                std::cout << "Error converting Root " << x << ": " << e.what() << std::endl;
+                continue;
             }
         }
-        std::cout << std::endl;
         
         if ((int)points.size() < k) {
-            std::cout << "ERROR: Not enough valid points!" << std::endl;
             return 1;
         }
         
@@ -302,22 +273,12 @@ int main() {
         
         std::vector<Point> selectedPoints(points.begin(), points.begin() + k);
         
-        std::cout << "Using first " << k << " points:" << std::endl;
-        for (int i = 0; i < k; i++) {
-            std::cout << "(" << selectedPoints[i].x << ", " << selectedPoints[i].y << ")";
-            if (i < k - 1) std::cout << ", ";
-        }
-        std::cout << std::endl;
-        
         // Use modular Lagrange interpolation
         long long secret = lagrangeInterpolationModular(selectedPoints, k);
         
-        std::cout << "\n=== RESULT ===" << std::endl;
-        std::cout << "The constant term (secret) is: " << secret << std::endl;
-        std::cout << "Note: Result is computed modulo " << MOD << std::endl;
+        std::cout <<"The Secret Key c is: "<< secret << std::endl;
         
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
     
